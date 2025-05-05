@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OCR Decodificador</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
+    h1 { text-align: center; }
+    video, canvas { max-width: 100%; margin: 10px 0; }
+    #textoDetectado, #decodificado { background: #fff; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; }
+    button { padding: 10px; margin: 10px 0; width: 100%; }
+  </style>
+</head>
+<body>
+  <h1>OCR Decodificador</h1>
+  <video id="video" autoplay playsinline muted></video>
+  <button onclick="leerCodigo()">Leer código desde cámara</button>
+  <h2>Código detectado</h2>
+  <div id="textoDetectado"></div>
+  <h2>Texto decodificado</h2>
+  <div id="decodificado"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').then(() => console.log("Service Worker registrado"));
+    }
+
+    const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const raizMap = {
+      A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, I: 9, J: 10,
+      K: 11, L: 12, M: 13, N: 14, O: 15, P: 16, Q: 17, R: 18, S: 19, T: 20,
+      U: 21, V: 22, W: 23, X: 24, Y: 25, Z: 26
+    };
+
+    const numberMap = {
+      '0': '*', '1': '?', '2': '¿', '3': '¡', '4': '!',
+      '5': '+', '6': '$', '7': '#', '8': '@', '9': '%'
+    };
+    const reverseNumberMap = Object.fromEntries(Object.entries(numberMap).map(([k, v]) => [v, k]));
+
+    function letraDeRaiz(num) {
+      return letras[num - 1];
+    }
+    function raizDeLetra(letra) {
+      return letras.indexOf(letra.toUpperCase()) + 1;
+    }
+
+    function decodificar(codigo) {
+      const palabras = codigo.trim().toUpperCase().split(" ").map(palabraCodificada => {
+        const caracteres = palabraCodificada.split('-');
+        let resultado = '';
+        for (let unidad of caracteres) {
+          if (unidad.length === 1 && reverseNumberMap[unidad]) {
+            resultado += reverseNumberMap[unidad];
+          } else if (unidad.length === 1 && /[A-Z]/.test(unidad)) {
+            const numero = raizDeLetra(unidad);
+            resultado += Object.keys(raizMap).find(k => raizMap[k] === numero);
+          } else if (unidad.length === 2) {
+            const n1 = raizDeLetra(unidad[0]);
+            const segundo = unidad[1];
+            let numero;
+            if (segundo === '0') {
+              numero = parseInt(n1.toString() + '0');
+            } else {
+              const n2 = raizDeLetra(segundo);
+              numero = parseInt(n1.toString() + n2.toString());
+            }
+            resultado += Object.keys(raizMap).find(k => raizMap[k] === numero);
+          }
+        }
+        return resultado;
+      });
+      return palabras.join(" ");
+    }
+
+    async function iniciarCamara() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        video.onloadedmetadata = () => video.play();
+      } catch (err) {
+        alert("No se pudo acceder a la cámara: " + err);
+      }
+    }
+
+    function leerCodigo() {
+      const video = document.getElementById('video');
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      Tesseract.recognize(canvas, 'eng').then(result => {
+        const texto = result.data.text.trim().toUpperCase();
+        document.getElementById('textoDetectado').innerText = texto;
+        const decodificado = decodificar(texto);
+        document.getElementById('decodificado').innerText = decodificado;
+      });
+    }
+
+    window.onload = iniciarCamara;
+  </script>
+</body>
+</html>
